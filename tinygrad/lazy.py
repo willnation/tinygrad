@@ -6,7 +6,7 @@ from weakref import ref, WeakSet, WeakValueDictionary
 import numpy as np
 from tinygrad.graph import log_op
 from tinygrad.helpers import GRAPH, DEBUG, prod, getenv, DType, dtypes, flatten, ImageDType, partition, all_int, dedup, merge_dicts
-from tinygrad.ops import Device, Compiled, UnaryOps, BinaryOps, TernaryOps, ReduceOps, MovementOps, LoadOps, OpType, LazyOp, MemBuffer, ConstBuffer, BufferOps
+from tinygrad.ops import Device, Compiled, UnaryOps, BinaryOps, TernaryOps, ReduceOps, MovementOps, LoadOps, OpType, LazyOp, MemBuffer, ConstBuffer, BufferOps, get_lazyop_info
 from tinygrad.shape.shapetracker import ShapeTracker, get_contraction
 from tinygrad.shape.symbolic import Variable, sint
 
@@ -193,8 +193,22 @@ class LazyBuffer:
     for x in op.buffers: ret += x.schedule(seen)
     self.var_vals = dict(sorted(merge_dicts([buf.var_vals for buf in op.buffers]).items(), key=lambda kv:cast(Variable,kv[0]).key))
 
+    # HACK: fix broken input images
+    for x in op.buffers:
+      if isinstance(x.dtype, ImageDType) and x.st.real_offset() % 4 != 0:
+        replacement = x.base.e(UnaryOps.CAST, arg=(dtypes.float32, False))
+        replacement.st = x.st  # HACK HACK HACK HACK
+        ret += replacement.schedule(seen)
+        op = op.map_buffers({x:replacement})
+
     # run the ast and log the op
     op, base_bufs = _replace_bufferops(op)
+
+    # HACK: fix the dtype if we need to
+    dtype_from_op_info = get_lazyop_info(op).dtype
+    if isinstance(self.dtype, ImageDType) and dtype_from_op_info != self.dtype:
+      self.dtype = dtype_from_op_info
+
     return ret + [(op, self, tuple(base_bufs))]
 
   def realize(self:LazyBuffer) -> LazyBuffer:
