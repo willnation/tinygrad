@@ -30,18 +30,24 @@ class TinyJit:
     assert len(input_rawbuffers) != 0, "no inputs to JIT"
     assert len(set(input_rawbuffers.values())) == len(input_rawbuffers), "duplicate inputs to JIT"
     if self.cnt >= 2:
-      try: var_vals: Dict[Variable, int] = kwargs["jit_ctx"]
-      except KeyError: var_vals = merge_dicts([arg.lazydata.var_vals for arg in args if arg.__class__ is Tensor])
-      if len(var_vals) > 1: var_vals = dict(sorted(var_vals.items(), key=lambda kv: kv[0].key))
-      for (j,i),(input_name, expected_st, expected_type) in self.input_replace.items():
+      try:
+        var_vals: Dict[Variable, int] = kwargs["jit_ctx"]
+      except KeyError:
+        var_vals = merge_dicts([arg.lazydata.var_vals for arg in args if arg.__class__ is Tensor])
+      if len(var_vals) > 1:
+        var_vals = dict(sorted(var_vals.items(), key=lambda kv: kv[0].key))
+
+      for (j,i), (input_name, expected_st, expected_type) in self.input_replace.items():
         assert input_rawbuffers[input_name][0].dtype == expected_type, f"type mismatch in JIT, {input_rawbuffers[input_name][0].dtype} != {expected_type}"
         # NOTE: if we pass jit_ctx instead of using reshape to update the var_vals, we cannot compare the shapetracker directly
         if "jit_ctx" not in kwargs: assert input_rawbuffers[input_name][1].views == expected_st.views, f"ShapeTracker.views mismatch in JIT, {input_rawbuffers[input_name][1].views} != {expected_st.views}"
         self.jit_cache[j][1][i] = input_rawbuffers[input_name][0]
+
       for j in self.updatable_entries.keys():
         for k in self.jit_cache[j][2].keys():
           try: self.jit_cache[j][2][k] = var_vals[k]
           except KeyError: pass
+
       self.batch_executor.exec(self.jit_cache, self.updatable_entries)
       for (j,i) in self.input_replace.keys(): self.jit_cache[j][1][i] = None
     elif self.cnt == 1:
