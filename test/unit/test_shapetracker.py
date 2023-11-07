@@ -79,7 +79,7 @@ class CheckingShapeTracker:
 
 class TestRealIssues(unittest.TestCase):
   def test_reshape_doesnt_multiview(self):
-    self.st = ShapeTracker((View.create((256, 256, 2, 2, 2, 2, 2, 256, 8, 2), (0, 8, 0, 4, 0, 0, 2, 16384, 2048, 1), 0, None),))
+    self.st = ShapeTracker((View.create((256, 256, 2, 2, 2, 2, 2, 256, 8, 2), (0, 8, 0, 4, 0, 0, 2, 16384, 2048, 1), None),))
     self.st.reshape((128, 2, 256, 2, 2, 2, 2, 2, 256, 8, 2))
     assert len(self.st.views) == 1
 
@@ -93,21 +93,21 @@ class TestRealDoesntSimplify(unittest.TestCase):
 
   def test_1(self):
     self.st = ShapeTracker((
-      View.create((8, 3, 1, 2, 11, 1), (33, 11, 0, 0, 1, 0), 0, None),
-      View.create((8, 6, 11), (66, 11, 1), 0, None)))
+      View.create((8, 3, 1, 2, 11, 1), (33, 11, 0, 0, 1, 0), None),
+      View.create((8, 6, 11), (66, 11, 1), None)))
     assert self.st.real_strides() == (33, None, 1)
 
   def test_2(self):
     self.st = ShapeTracker((
-      View.create((2, 2, 4, 3, 3), (72, 9, 18, -3, -1), 8, None),
-      View.create((4, 4, 3, 3), (36, 9, 3, 1), 0, None)))
+      View.create((2, 2, 4, 3, 3), (72, 9, 18, -3, -1), None),
+      View.create((4, 4, 3, 3), (36, 9, 3, 1), None)), 8)
     assert self.st.real_strides() == (None, 18, -3, -1)
 
 class TestRealStrides(unittest.TestCase):
   def test_1(self):
     self.st = ShapeTracker((
-      View.create((2048,), (1,), 0, ((0, 512),)),
-      View.create((16, 32, 4), (128, 4, 1), 0, None)))
+      View.create((2048,), (1,), ((0, 512),)),
+      View.create((16, 32, 4), (128, 4, 1), None)))
     st = self.st.real_strides()
     print(self.st, st)
     assert st == (None, 4, 1)
@@ -122,16 +122,15 @@ class TestRealSimplifies(unittest.TestCase):
 
   def test_1(self):
     self.st = ShapeTracker((
-      View.create((1, 3, 2, 11, 4, 28), (0, 308, 0, 28, 0, 1), 0, None),
-      View.create((1, 3, 2, 11, 26, 1, 1, 3), (0, 2464, 0, 112, 1, 0, 0, 29), 0, None)))
+      View.create((1, 3, 2, 11, 4, 28), (0, 308, 0, 28, 0, 1), None),
+      View.create((1, 3, 2, 11, 26, 1, 1, 3), (0, 2464, 0, 112, 1, 0, 0, 29), None)))
 
   def test_2(self):
     self.st = ShapeTracker((
-      View.create((8, 3, 3, 11, 2, 28), (924, 308, 0, 28, 0, 1), 0, None),
-      View.create((8, 1, 6, 10, 28, 3, 2, 1), (5544, 0, 0, 56, 1, 1848, 672, 0), 0, None)))
+      View.create((8, 3, 3, 11, 2, 28), (924, 308, 0, 28, 0, 1), None),
+      View.create((8, 1, 6, 10, 28, 3, 2, 1), (5544, 0, 0, 56, 1, 1848, 672, 0), None)))
 
 class TestIndexExpressions2d(unittest.TestCase):
-
   def setUp(self):
     shapes = [(30, 5), (15, 10), (15, 1), (5, 10), (5, 1)] # Make sure dim0 is a multiple of 5, one of the tests divides this dimension by 5
     offsets = [0, 1, 15, 28, 10000]
@@ -404,8 +403,10 @@ class TestSingleShapeTracker(unittest.TestCase):
 class TestShapeTrackerFuzzFailures(unittest.TestCase):
   def setUp(self):
     self.st = CheckingShapeTracker((3,3,3))
+
   def tearDown(self):
     self.st.assert_same()
+
   @unittest.skip("simplify doesn't work in this case")
   def test_case_1(self):
     self.st.shrink(((1, 2), (1, 3), (1, 3)))
@@ -414,17 +415,25 @@ class TestShapeTrackerFuzzFailures(unittest.TestCase):
     print(self.st.st)
     self.st = self.st.simplify()
     print(self.st.st)
+
   def test_case_2(self):
     self.st.stride( (1, 1, -2) )
     self.st.reshape( (3, 6) )
     self.st.shrink( ((1, 2), (1, 5)) )
     self.st.stride( (1, -1) )
+
+  def test_case_2_simple(self):
+    self.st.stride( (3, 1, -2) )
+    self.st.reshape( (6,) )
+    self.st.shrink( ((1, 5),) )
+
   def test_case_3(self):
     self.st.shrink( ((0, 2), (0, 2), (0, 1)) )
     self.st.permute( (1, 0, 2) )
     self.st.reshape( (4,) )
     self.st.shrink( ((0, 3),) )
     self.st.stride( (-1,) )
+
   def test_case_4(self):
     self.st.reshape( (3, 3, 3, 1) )
     self.st.pad( ((0, 0), (0, 0), (0, 0), (1, 1)) )
